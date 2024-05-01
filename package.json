@@ -55,7 +55,7 @@
     "@types/yargs-parser": "^21.0.2",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^6.9.1",
-    "ava": "^3.10.1",
+    "ava": "^5.0.0",
     "buffer-equal": "^1.0.0",
     "codecov": "^3.0.0",
     "copyfiles": "^2.4.1",
@@ -97,12 +97,10 @@
     "app"
   ],
   "ava": {
-    "timeout": "60s"
+    "timeout": "60s",
+    "workerThreads": false
   },
   "funding": {
     "url": "https://github.com/electron/packager?sponsor=1"
-  },
-  "resolutions": {
-    "got": "11.8.5"
   }
 }
