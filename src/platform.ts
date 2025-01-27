@@ -156,10 +156,27 @@ export class App {
   async copyTemplate() {
     await promisifyHooks(this.opts.beforeCopy, this.hookArgsWithOriginalResourcesAppDir);
 
-    await fs.copy(this.opts.dir, this.originalResourcesAppDir, {
-      filter: userPathFilter(this.opts),
-      dereference: this.opts.derefSymlinks,
-    });
+    if (this.opts.tmpdir === false) {
+      const filter = userPathFilter(this.opts);
+      const items = await fs.readdir(this.opts.dir);
+      await Promise.all(items.map(async item => {
+        const srcItem = path.join(this.opts.dir, item);
+        const destItem = path.join(this.originalResourcesAppDir, item);
+
+        const include = await filter(srcItem, destItem);
+        if (!include) return;
+
+        return fs.copy(srcItem, destItem, {
+          filter,
+          dereference: this.opts.derefSymlinks ?? true,
+        });
+      }));
+    } else {
+      await fs.copy(this.opts.dir, this.originalResourcesAppDir, {
+        filter: userPathFilter(this.opts),
+        dereference: this.opts.derefSymlinks ?? true,
+      });
+    }
     await promisifyHooks(this.opts.afterCopy, this.hookArgsWithOriginalResourcesAppDir);
     if (this.opts.prune) {
       await promisifyHooks(this.opts.afterPrune, this.hookArgsWithOriginalResourcesAppDir);
