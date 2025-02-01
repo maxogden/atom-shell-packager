@@ -3,12 +3,12 @@ import { generateFinalPath, info } from './common';
 import fs from 'fs-extra';
 import path from 'path';
 import { App } from './mac';
-import { ComboOptions, DownloadOptions, SupportedArch } from './types';
+import { ApplicationBundlePath, ComboOptions, DownloadOptions, SupportedArch } from './types';
 import { Packager } from './packager';
 
 export async function packageUniversalMac(packageForPlatformAndArchWithOpts: Packager['packageForPlatformAndArchWithOpts'],
   buildDir: string, comboOpts: ComboOptions,
-  downloadOpts: DownloadOptions, tempBase: string) {
+  downloadOpts: DownloadOptions, tempBase: string): Promise<ApplicationBundlePath> {
   // In order to generate a universal macOS build we actually need to build the x64 and the arm64 app
   // and then glue them together
   info(`Packaging app for platform ${comboOpts.platform} universal using electron v${comboOpts.electronVersion} - Building x64 and arm64 slices now`, comboOpts.quiet);
@@ -24,7 +24,7 @@ export async function packageUniversalMac(packageForPlatformAndArchWithOpts: Pac
       await fs.remove(finalUniversalPath);
     } else {
       info(`Skipping ${comboOpts.platform} ${comboOpts.arch} (output dir already exists, use --overwrite to force)`, comboOpts.quiet);
-      return true;
+      return '';
     }
   }
 
@@ -44,8 +44,7 @@ export async function packageUniversalMac(packageForPlatformAndArchWithOpts: Pac
     delete tempOpts.osxSign;
     delete tempOpts.osxNotarize;
 
-    // @TODO(erikian): I don't like this type cast, the return type for `packageForPlatformAndArchWithOpts` is probably wrong
-    tempPackages[tempArch] = (await packageForPlatformAndArchWithOpts(tempOpts, tempDownloadOpts)) as string;
+    tempPackages[tempArch] = await packageForPlatformAndArchWithOpts(tempOpts, tempDownloadOpts);
   }));
 
   const x64AppPath = tempPackages.x64;

@@ -8,7 +8,7 @@ import path from 'path';
 import { createPlatformArchPairs, osModules, validateListFromOptions } from './targets';
 import { extractElectronZip } from './unzip';
 import { packageUniversalMac } from './universal';
-import { ComboOptions, DownloadOptions, OfficialPlatform, Options, SupportedArch, SupportedPlatform } from './types';
+import { ApplicationBundlePath, ComboOptions, DownloadOptions, OfficialPlatform, Options, SupportedArch, SupportedPlatform } from './types';
 import { App } from './platform';
 
 function debugHostInfo() {
@@ -35,7 +35,10 @@ export class Packager {
     }
   }
 
-  async testSymlink(comboOpts: ComboOptions, zipPath: string) {
+  /**
+   * Returns `true` if symlink creation is supported, `false` otherwise.
+   */
+  async testSymlink(comboOpts: ComboOptions): Promise<boolean> {
     await fs.mkdirp(this.tempBase);
     const testPath = await fs.mkdtemp(path.join(this.tempBase, `symlink-test-${comboOpts.platform}-${comboOpts.arch}-`));
     const testFile = path.join(testPath, 'test');
@@ -52,24 +55,13 @@ export class Packager {
       await fs.remove(testPath);
     }
 
-    if (this.canCreateSymlinks) {
-      return this.checkOverwrite(comboOpts, zipPath);
-    }
-
-    /* istanbul ignore next */
-    return this.skipHostPlatformSansSymlinkSupport(comboOpts);
+    return this.canCreateSymlinks;
   }
 
   /* istanbul ignore next */
-  skipHostPlatformSansSymlinkSupport(comboOpts: ComboOptions) {
+  skipHostPlatformSansSymlinkSupport(comboOpts: ComboOptions): ApplicationBundlePath {
     info(`Cannot create symlinks (on Windows hosts, it requires admin privileges); skipping ${comboOpts.platform} platform`, this.opts.quiet);
-    return Promise.resolve();
-  }
-
-  async overwriteAndCreateApp(outDir: string, comboOpts: ComboOptions, zipPath: string) {
-    debug(`Removing ${outDir} due to setting overwrite: true`);
-    await fs.remove(outDir);
-    return this.createApp(comboOpts, zipPath);
+    return '';
   }
 
   async extractElectronZip(comboOpts: ComboOptions, zipPath: string, buildDir: string) {
@@ -106,14 +98,16 @@ export class Packager {
     return app.create();
   }
 
-  async checkOverwrite(comboOpts: ComboOptions, zipPath: string) {
+  async checkOverwrite(comboOpts: ComboOptions, zipPath: string): Promise<ApplicationBundlePath> {
     const finalPath = generateFinalPath(comboOpts);
     if (await fs.pathExists(finalPath)) {
       if (this.opts.overwrite) {
-        return this.overwriteAndCreateApp(finalPath, comboOpts, zipPath);
+        debug(`Removing ${finalPath} due to setting overwrite: true`);
+        await fs.remove(finalPath);
+        return this.createApp(comboOpts, zipPath);
       } else {
         info(`Skipping ${comboOpts.platform} ${comboOpts.arch} (output dir already exists, use --overwrite to force)`, this.opts.quiet);
-        return true;
+        return '';
       }
     } else {
       return this.createApp(comboOpts, zipPath);
@@ -140,26 +134,32 @@ export class Packager {
     }
   }
 
-  async packageForPlatformAndArchWithOpts(comboOpts: ComboOptions, downloadOpts: DownloadOptions) {
+  async packageForPlatformAndArchWithOpts(comboOpts: ComboOptions, downloadOpts: DownloadOptions): Promise<ApplicationBundlePath> {
     const zipPath = await this.getElectronZipPath(downloadOpts);
 
     if (!this.useTempDir) {
       return this.createApp(comboOpts, zipPath);
     }
 
+    let skipHostPlatform = false;
+
     if (isPlatformMac(comboOpts.platform)) {
       /* istanbul ignore else */
-      if (this.canCreateSymlinks === undefined) {
-        return this.testSymlink(comboOpts, zipPath);
+      if (this.canCreateSymlinks === undefined && !(await this.testSymlink(comboOpts))) {
+        skipHostPlatform = true;
       } else if (!this.canCreateSymlinks) {
-        return this.skipHostPlatformSansSymlinkSupport(comboOpts);
+        skipHostPlatform = true;
       }
+    }
+
+    if (skipHostPlatform) {
+      return this.skipHostPlatformSansSymlinkSupport(comboOpts);
     }
 
     return this.checkOverwrite(comboOpts, zipPath);
   }
 
-  async packageForPlatformAndArch(downloadOpts: DownloadOptions) {
+  async packageForPlatformAndArch(downloadOpts: DownloadOptions): Promise<ApplicationBundlePath> {
     // Create delegated options object with specific platform and arch, for output directory naming
     const comboOpts: ComboOptions = {
       ...this.opts,
@@ -176,7 +176,7 @@ export class Packager {
   }
 }
 
-async function packageAllSpecifiedCombos(opts: Options, archs: SupportedArch[], platforms: SupportedPlatform[]) {
+async function packageAllSpecifiedCombos(opts: Options, archs: SupportedArch[], platforms: SupportedPlatform[]): Promise<ApplicationBundlePath[]> {
   const packager = new Packager(opts);
   await packager.ensureTempDir();
   return Promise.all(createDownloadCombos(opts, platforms, archs).map(
@@ -245,5 +245,5 @@ export async function packager(opts: Options): Promise<string[]> {
   ]);
   const appPaths = await packageAllSpecifiedCombos(opts, archs, platforms);
   // Remove falsy entries (e.g. skipped platforms)
-  return appPaths.filter(appPath => appPath && typeof appPath === 'string') as string[];
+  return appPaths.filter(Boolean);
 }

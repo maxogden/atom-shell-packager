@@ -631,3 +631,8 @@ export interface ComboOptions extends Options {
   arch: OptionsWithRequiredArchAndPlatform['arch']
   platform: OptionsWithRequiredArchAndPlatform['platform']
 }
+
+/**
+ * Path to an application bundle, or an empty string in case the bundling was skipped for some reason.
+ */
+export type ApplicationBundlePath = string
